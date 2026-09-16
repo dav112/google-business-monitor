@@ -8,7 +8,7 @@ const schema = z.object({ email: z.string().email(), password: z.string().min(1)
 export async function POST(req: Request) {
   const ip = getClientIp(req);
   if (process.env.NODE_ENV === "production") {
-    const rl = rateLimit(`login:${ip}`, 5, 5 * 60 * 1000);
+    const rl = rateLimit(`login:${ip}`, 20, 5 * 60 * 1000);
     if (!rl.ok) return Response.json({ error: "Too many attempts. Try again later." }, { status: 429, headers: { "Retry-After": String(Math.ceil((rl.resetAt - Date.now()) / 1000)) } });
   }
   let body: any;
