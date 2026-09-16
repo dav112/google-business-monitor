@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/admin/sync-sheet",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/admin/sheet-pull",
+      "schedule": "0 4 * * *"
+    }
+  ]
+}

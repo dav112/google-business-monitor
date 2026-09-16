@@ -1,0 +1,243 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  theme            String?  @default("colorful")
+  avatar           String?  @db.Text // base64 or URL
+  avatarPosX       Int      @default(50) // 0-100
+  avatarPosY       Int      @default(50)
+  avatarZoom       Float    @default(1)
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  sessionInvalidBefore DateTime?
+  emailVerified        Boolean @default(false)
+  status             String  @default("active") // active | suspended — ponytail: 2 state, add more when needed
+  lastActiveAt       DateTime?
+  role               Role    @default(USER)
+
+  googleAccounts    GoogleAccount[]
+  locations         Location[]
+  activityLogs      ActivityLog[]
+  telegramConfigs   TelegramConfig[]
+  googleSheets      GoogleSheet[]
+  googleConfig      UserGoogleConfig?
+  emails            UserEmail[]
+
+  @@map("users")
+}
+
+model GoogleAccount {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email        String
+  accessToken  String   @db.Text
+  refreshToken String   @db.Text
+  expiryDate   DateTime?
+  scope        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  businessAccounts BusinessAccount[]
+
+  @@unique([userId, email])
+  @@map("google_accounts")
+}
+
+model BusinessAccount {
+  id              String   @id @default(cuid())
+  googleAccountId String
+  googleAccount   GoogleAccount @relation(fields: [googleAccountId], references: [id], onDelete: Cascade)
+  accountId       String
+  accountName     String
+  createdAt       DateTime @default(now())
+
+  locations Location[]
+
+  @@unique([googleAccountId, accountId])
+  @@map("business_accounts")
+}
+
+model Location {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessAccountId String?
+  businessAccount   BusinessAccount? @relation(fields: [businessAccountId], references: [id], onDelete: SetNull)
+
+  // Google identifiers
+  name              String   // locations/{locationId}
+  title             String
+  address           String?
+  placeId           String?
+
+  isMonitored       Boolean  @default(false)
+  lastSyncedAt      DateTime?
+  rating            Float?
+  reviewCount       Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reviews            Review[]
+  performanceMetrics PerformanceMetric[]
+  activityLogs       ActivityLog[]
+
+  @@index([userId])
+  @@map("locations")
+}
+
+model Review {
+  id            String   @id @default(cuid())
+  // Google reviewId - unique constraint to prevent duplicates
+  reviewId      String   @unique
+  locationId    String
+  location      Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  reviewerName  String?
+  reviewerPhoto String?
+  rating        Int      // 1-5
+  comment       String?  @db.Text
+  createTime    DateTime?
+  updateTime    DateTime?
+  reply         String?  @db.Text
+  hasReply      Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notifications Notification[]
+
+  @@index([locationId])
+  @@index([rating])
+  @@map("reviews")
+}
+
+model PerformanceMetric {
+  id               String   @id @default(cuid())
+  locationId       String
+  location         Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  date             DateTime @db.Date
+
+  mapsViews        Int @default(0)
+  searchViews      Int @default(0)
+  websiteClicks    Int @default(0)
+  phoneCalls       Int @default(0)
+  directionRequests Int @default(0)
+  // JSON for any additional metrics API returns without inventing
+  raw              Json?
+
+  createdAt DateTime @default(now())
+
+  @@unique([locationId, date])
+  @@index([locationId])
+  @@map("performance_metrics")
+}
+
+model GoogleSheet {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  spreadsheetId  String
+  spreadsheetUrl String
+  isActive       Boolean  @default(true)
+  lastSyncedAt   DateTime?
+  status         String   @default("connected")
+  errorMessage   String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+  @@map("google_sheets")
+}
+
+model TelegramConfig {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  botToken  String  @db.Text
+  chatId    String
+  isActive  Boolean @default(true)
+  alertOn1  Boolean @default(true)
+  alertOn2  Boolean @default(true)
+  alertOn3  Boolean @default(true)
+  alertOn4  Boolean @default(false)
+  alertOn5  Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("telegram_configs")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  reviewId  String
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  channel   String   // telegram
+  status    String   // sent, failed, pending
+  error     String?  @db.Text
+  sentAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([reviewId])
+  @@map("notifications")
+}
+
+model UserEmail {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email     String
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  @@unique([userId, email])
+  @@index([userId])
+  @@map("user_emails")
+}
+
+model UserGoogleConfig {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId     String   @db.Text
+  clientSecret String   @db.Text // encrypted
+  redirectUri  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@map("user_google_configs")
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  type       String
+  status     String   // success, failed, pending
+  message    String   @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([type])
+  @@map("activity_logs")
+}
