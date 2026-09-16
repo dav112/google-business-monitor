@@ -1,0 +1,235 @@
+================================================================================
+GOOGLE BUSINESS MONITOR - INFO LENGKAP WEB
+Generated: 2026-09-16 | Project: google-business-monitor
+================================================================================
+
+1. LINK UTAMA
+--------------------------------------------------------------------------------
+Production (Online, Gratis, HTTPS):
+  https://google-business-monitor.vercel.app
+  https://google-business-monitor.vercel.app/login
+  https://google-business-monitor.vercel.app/register
+  https://google-business-monitor.vercel.app/menu
+  https://google-business-monitor.vercel.app/dashboard
+  https://google-business-monitor.vercel.app/admin
+  https://google-business-monitor.vercel.app/admin/users
+  https://google-business-monitor.vercel.app/admin/activity
+
+GitHub (Public):
+  https://github.com/dav112/google-business-monitor
+  Branch: main
+  Commit terbaru: a65a511 + 6838600 (fix rate limit 20/5m)
+
+Vercel Dashboard:
+  https://vercel.com/lukmandavids-projects/google-business-monitor
+  Project ID: prj_NCPyKvYu0KR2AcXTtx2OgAcqwTbf
+  Team: lukmandavids-projects (lukmandavid - Hobby Free)
+  Deploy Region: Washington D.C. iad1 (2 cores, 8GB)
+
+Neon Dashboard (Database):
+  https://console.neon.tech/app/projects/lingering-bar-37865317
+  Project: lingering-bar-37865317
+  Store: neon-champagne-feather (store_Ers1CALtbzue5Is1)
+
+Google Sheet Master (Rekap Users):
+  https://docs.google.com/spreadsheets/d/15DamHskowz8-_Xji_KqrXpm-u_TykAOYGfTcfisPhM4
+  Sheet: Users!A1:J  (Email, Name, CreatedAt, EmailVerified, GoogleAccounts, Telegram, Locations, Sheets, UserId, Status)
+
+2. ARSITEKTUR
+--------------------------------------------------------------------------------
+USER
+  ↓ HTTPS (Vercel, auto HSTS)
+Frontend + Backend (Monolith Next.js 16.3.5 di Vercel)
+  ↓ Prisma 5.22.0
+PostgreSQL Neon (Serverless, pooled + unpooled)
+
+Frontend TIDAK langsung pakai secret → semua via Backend API:
+  Frontend → Backend → Google Business Profile API
+  Frontend → Backend → Google Sheets API v4
+  Frontend → Backend → Telegram Bot API
+
+Framework:
+  Frontend: Next.js 16.3.5 + React 19.2.8 + Tailwind 4 + framer-motion + recharts
+  Backend: Next.js API Routes (30+ endpoint di src/app/api/*)
+  Package Manager: npm (package-lock.json)
+  Commands:
+    npm run dev    → next dev (FE+BE, http://localhost:3000)
+    npm run build  → prisma generate && next build
+    npm start      → next start
+    npx prisma db push → sync schema ke Neon
+
+Monorepo: Single repo, single deploy (Vercel). Tidak pisah FE/BE.
+
+3. DATABASE
+--------------------------------------------------------------------------------
+Provider: Neon Serverless Postgres (Free 0.5GB, via Vercel Marketplace)
+Host: ep-jolly-rain-awshp5j4-pooler.c-12.us-east-1.aws.neon.tech
+Host Unpooled: ep-jolly-rain-awshp5j4.c-12.us-east-1.aws.neon.tech
+Database: neondb
+User: neondb_owner
+Project ID: lingering-bar-37865317
+Connection (Pooled, untuk app):
+  postgresql://neondb_owner:***@ep-jolly-rain-awshp5j4-pooler.c-12.us-east-1.aws.neon.tech/neondb?sslmode=require
+  (password ada di Vercel Env → DATABASE_URL, jangan commit ke GitHub)
+
+Schema (prisma/schema.prisma):
+  User (id, name, email, password hash, role ADMIN/USER, status active/suspended, avatar, theme, etc)
+  GoogleAccount, BusinessAccount, Location, Review, PerformanceMetric,
+  GoogleSheet, TelegramConfig, Notification, UserEmail, UserGoogleConfig, ActivityLog
+  Enum Role: ADMIN, USER
+
+Migration:
+  DATABASE_URL="...neon..." npx prisma db push  (sudah dijalankan 21s, 2026-09-16)
+
+4. SECURITY
+--------------------------------------------------------------------------------
+Authentication:
+  - JWT HS256 via jose, httpOnly cookie "token", Secure di production, SameSite=lax, 7d (src/lib/auth.ts:43)
+  - Password hash bcryptjs 10 rounds (src/lib/auth.ts:9)
+  - Rate limit login 20/5m per IP (src/lib/rate-limit.ts:7, src/app/api/auth/login/route.ts:11)
+
+Authorization:
+  - ADMIN via User.role === ADMIN ATAU email ∈ ADMIN_EMAILS (src/lib/auth.ts:29-35)
+  - ADMIN_EMAILS="lukmandavid294@gmail.com" (Vercel Env)
+  - Semua /api/admin/* pakai requireAdmin() / isAdminUser() → 403 jika USER, 200 jika ADMIN
+  - Sidebar admin cek role==="ADMIN" (src/components/sidebar.tsx:31) → setelah update DB role ADMIN baru muncul
+
+Encryption:
+  - AES-256-GCM untuk botToken, chatId, clientSecret (src/lib/crypto.ts:22)
+  - ENCRYPTION_KEY (64 hex, Vercel Env) → fallback hash JWT_SECRET di dev
+
+Headers (middleware.ts:22):
+  - X-Content-Type-Options: nosniff
+  - Referrer-Policy: strict-origin-when-cross-origin
+  - Permissions-Policy: camera=(), microphone=(), geolocation=()
+  - X-Frame-Options: DENY
+  - CSP: default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https; frame-ancestors 'none'
+  - HSTS: max-age=31536000; includeSubDomains (production)
+
+CORS:
+  - Same-origin (FE+BE satu domain vercel.app), tidak ada wildcard *
+
+Secret Protection:
+  - Hanya NEXT_PUBLIC_APP_URL di frontend (public)
+  - DATABASE_URL, JWT_SECRET, ENCRYPTION_KEY, CRON_SECRET, GOOGLE_CLIENT_SECRET hanya di Backend Vercel Env
+  - .env, .env.local, .vercel di .gitignore (now fixed, .env.example tracked dengan placeholder)
+  - GitHub secret scanning enabled, .env tidak ada di repo (gh api 404)
+
+5. ENVIRONMENT VARIABLES (di Vercel → Settings → Environment Variables)
+--------------------------------------------------------------------------------
+Production (sudah set):
+  DATABASE_URL (Neon pooled, auto via integration)
+  DATABASE_URL_UNPOOLED, POSTGRES_PRISMA_URL, POSTGRES_URL, dll (auto)
+  JWT_SECRET=84MK8TbhABrQD7SFk8ca6aXlAmaNKNpCiAkWOVQDacU
+  JWT_EXPIRES_IN=7d
+  ENCRYPTION_KEY=683e3131b76de7615d9174c1557d963e4b367944c99e39eea44d9e730e92018a
+  CRON_SECRET=DOBEP9V1RFdTJblZSQjlOaeLEwdisEVe
+  ADMIN_EMAILS=lukmandavid294@gmail.com
+  NEXT_PUBLIC_APP_URL=https://google-business-monitor.vercel.app
+  GOOGLE_REDIRECT_URI=https://google-business-monitor.vercel.app/api/google/callback
+
+Opsional (isi nanti jika pakai Google asli):
+  GOOGLE_CLIENT_ID=""
+  GOOGLE_CLIENT_SECRET=""
+  GOOGLE_PUBSUB_TOPIC="projects/PROJECT_ID/topics/gbp-reviews"
+  GOOGLE_PUBSUB_VERIFICATION_TOKEN=""
+  TELEGRAM_BOT_TOKEN (per-user, disimpan encrypted di DB via TelegramConfig)
+
+Local (.env untuk dev):
+  DATABASE_URL="postgresql://karyarasaindonesia@localhost:5432/google_business_monitor?schema=public"
+  NEXT_PUBLIC_APP_URL="http://localhost:3000"
+
+6. AKUN
+--------------------------------------------------------------------------------
+ADMIN (akses penuh):
+  Email    : lukmandavid294@gmail.com
+  Password : Admin1234!
+  Role     : ADMIN (sudah update dari USER → ADMIN di Neon, 2026-09-16)
+  Login    : https://google-business-monitor.vercel.app/login
+  Hak      : Bisa buka /admin, /admin/users, /admin/activity, /api/admin/*, manage users, suspend, ganti role
+
+  Jika lupa password:
+    - Forgot: https://google-business-monitor.vercel.app/forgot-password → masukkan email
+    - Atau reset manual via:
+      DATABASE_URL="...neon..." node -e "bcryptjs hash + prisma update" (sudah dilakukan 2026-09-16)
+
+USER Biasa (contoh untuk test):
+  Email    : testuser1789551039@example.com / step13_1789551713@example.com
+  Password : Test1234!
+  Role     : USER
+  Batasan  : Tidak bisa GET /api/admin/* (403 Forbidden), tidak lihat menu ADMIN
+
+Cara buat USER baru:
+  Register di https://google-business-monitor.vercel.app/register (butuh avatar upload, data:image/png)
+  Atau ADMIN buat via /admin/users → POST {name,email,password,role,status}
+
+7. FITUR & API
+--------------------------------------------------------------------------------
+Public:
+  /login, /register, /forgot-password, /reset-password, /menu, /privacy, /terms
+
+Auth:
+  POST /api/auth/register {name,email,password,avatar} → auto syncMasterUserSheet (mock jika GOOGLE_CLIENT_ID kosong)
+  POST /api/auth/login {email,password} → set cookie token
+  GET  /api/auth/me → {user:{id,name,email,role,status}}
+  POST /api/auth/logout, /api/auth/logout-all, /api/auth/forgot, /api/auth/reset
+
+Admin (butuh ADMIN):
+  GET  /api/admin/users?search=&status=&role=&page=&limit=
+  POST /api/admin/users {name,email,password,role, status}
+  PATCH /api/admin/users/[id]/role {role: ADMIN/USER}
+  POST /api/admin/users/[id]/suspend, /unsuspend, /delete
+  GET  /api/admin/activity, /api/admin/stats
+  GET/POST /api/admin/sync-sheet, /api/admin/sheet-pull (cron daily 0 3 * * *, 0 4 * * *, juga via CRON_SECRET)
+
+Google:
+  GET /api/google/auth → redirect Google OAuth (butuh GOOGLE_CLIENT_ID)
+  GET /api/google/callback?code=...
+  GET /api/google/accounts, /api/google/locations, POST /api/locations/import, /sync, /toggle
+  GET /api/reviews, POST /api/reviews/sync, GET /api/performance, POST /api/performance/sync
+
+Sheets:
+  POST /api/sheets/connect {spreadsheetId}, /api/sheets/sync, /api/sheets/list, /api/sheets/disconnect
+
+Telegram:
+  POST /api/telegram/connect {botToken, chatId}, GET /api/telegram/list, POST /api/telegram/test, /toggle, /retry
+
+Cron:
+  GET /api/cron/sync?token=CRON_SECRET (daily 0 2 * * *, Hobby limit; untuk 15m pakai cron-job.org gratis)
+
+8. DEPLOYMENT
+--------------------------------------------------------------------------------
+Hosting: Vercel Hobby Free (tanpa VPS/domain berbayar)
+Build: prisma generate && next build (fix PrismaClientInitializationError di Vercel)
+Cron: vercel.json daily (Hobby hanya allow daily, bukan */15)
+Deploy:
+  vercel --prod --yes (35s, alias https://google-business-monitor.vercel.app)
+  atau git push → vercel auto (jika GitHub App sudah connect di Vercel Settings → Git)
+
+Database Setup:
+  vercel integration add neon → auto DATABASE_URL → npx prisma db push
+
+Git:
+  git init (di google-business-monitor/), branch main
+  git add . && git commit -m "..." && gh repo create --public --push
+  Remote: https://github.com/dav112/google-business-monitor.git
+
+9. CARA AKSES ONLINE (GRATIS & AMAN)
+--------------------------------------------------------------------------------
+Buka: https://google-business-monitor.vercel.app/login
+- Sudah HTTPS, bisa dari HP/laptop mana saja, tanpa VPN
+- Jika update code: git push → vercel --prod --yes (atau auto jika GitHub connected)
+- Untuk Google asli: isi GOOGLE_CLIENT_ID/SECRET di Vercel Env → redeploy → Connect Google di /locations → share sheet 15DamH... ke email Google tersebut sebagai Editor → Sync
+
+10. CATATAN PENTING
+--------------------------------------------------------------------------------
+- Jangan commit .env, .env.local, .vercel (sudah .gitignore)
+- .env.example hanya placeholder (change-me...), aman di GitHub
+- Ganti password ADMIN setelah login di Settings → Security
+- Rate limit login 20/5m per IP (jika "Too many attempts", tunggu 5m atau redeploy)
+- Untuk sync lebih sering dari daily, pakai https://cron-job.org (gratis) → GET /api/cron/sync?token=DOBEP9V1...
+- Semua layanan free tier, tidak perlu bayar VPS/domain. Upgrade Pro hanya jika butuh cron tiap menit & analytics lebih.
+
+================================================================================
+END OF FILE — Simpan file ini di tempat aman, jangan share password ke publik!
+================================================================================
